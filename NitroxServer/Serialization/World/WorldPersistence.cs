@@ -17,7 +17,7 @@ using NitroxModel.Core;
 using NitroxModel.DataStructures.GameLogic.Entities;
 using NitroxServer.GameLogic.Entities.EntityBootstrappers;
 using NitroxServer.Serialization.Resources.Datastructures;
-using NitroxModel.DataStructures.GameLogic;
+using System.Threading.Tasks;
 
 namespace NitroxServer.Serialization.World
 {
@@ -25,6 +25,7 @@ namespace NitroxServer.Serialization.World
     {
         private readonly ServerProtobufSerializer serializer;
         private readonly ServerConfig config;
+        private int _backUpInterval = 0;
 
         public WorldPersistence(ServerProtobufSerializer serializer, ServerConfig config)
         {
@@ -34,8 +35,6 @@ namespace NitroxServer.Serialization.World
 
         public void Save(World world)
         {
-            Log.Info("Saving world state.");
-
             try
             {
                 PersistedWorldData persistedData = new PersistedWorldData();
@@ -49,16 +48,72 @@ namespace NitroxServer.Serialization.World
                 persistedData.GameData = world.GameData;
                 persistedData.EscapePodData = world.EscapePodData;
 
-                using (Stream stream = File.OpenWrite(config.SaveName + ".nitrox"))
-                {
-                    serializer.Serialize(stream, persistedData);
-                }
-
-                Log.Info("World state saved.");
+                Task t = new Task(() => SaveAll(persistedData));
+                t.RunSynchronously();
+                //Log.Info("World state saved.");
             }
             catch (Exception ex)
             {
                 Log.Info("Could not save world: " + ex);
+            }
+        }
+
+        private void SaveAll(PersistedWorldData pwd)
+        {
+            try
+            {
+                if (!Directory.Exists("saves"))
+                {
+                    Directory.CreateDirectory("saves");
+                }
+
+                _backUpInterval++;
+                bool isBackup = false;
+                if (_backUpInterval == config.BackUpInterval && File.Exists($"saves{Path.DirectorySeparatorChar}{config.SaveName}.nitrox"))
+                {
+                    File.Copy($"saves{Path.DirectorySeparatorChar}{config.SaveName}.nitrox", $"saves{Path.DirectorySeparatorChar}{config.SaveName}-{DateTime.Now.ToString("dd-MM-yyyy_HH-mm-ss")}.nitrox");
+                    _backUpInterval = 0;
+                    isBackup = true;
+                }
+
+                using (Stream stream = File.OpenWrite($"saves{Path.DirectorySeparatorChar}{config.SaveName}.nitrox"))
+                {
+                    serializer.Serialize(stream, pwd);
+                }
+
+                if (isBackup)
+                {
+                    RemoveOldBackUps();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Info("Could not save world: " + ex);
+            }
+        }
+
+        private void RemoveOldBackUps()
+        {
+            List<DateTime> tmpList = new List<DateTime>();
+            Dictionary<DateTime, string> tmp = new Dictionary<DateTime, string>();
+            foreach (string f in Directory.GetFiles(@"saves", config.SaveName + "-*.nitrox"))
+            {
+                tmp.Add(File.GetLastWriteTime(f), f);
+                tmpList.Add(File.GetLastWriteTime(f));
+            }
+
+            if (tmpList.Count > config.HoldBackUps)
+            {
+                tmpList.Sort();
+                tmpList.Reverse();
+                tmpList.RemoveRange(0, 20);
+                foreach (DateTime dt in tmpList)
+                {
+                    if (tmp.ContainsKey(dt))
+                    {
+                        File.Delete(tmp[dt]);
+                    }
+                }
             }
         }
 
@@ -67,8 +122,12 @@ namespace NitroxServer.Serialization.World
             try
             {
                 PersistedWorldData persistedData;
+                if (!File.Exists($"saves{Path.DirectorySeparatorChar}{config.SaveName}.nitrox"))
+                {
+                    return Optional<World>.Empty();
+                }
 
-                using (Stream stream = File.OpenRead(config.SaveName + ".nitrox"))
+                using (Stream stream = File.OpenRead($"saves{Path.DirectorySeparatorChar}{config.SaveName}.nitrox"))
                 {
                     persistedData = serializer.Deserialize<PersistedWorldData>(stream);
                 }
@@ -77,7 +136,7 @@ namespace NitroxServer.Serialization.World
                 {
                     throw new InvalidDataException("Persisted state is not valid");
                 }
-                
+
 
                 World world = CreateWorld(persistedData.ServerStartTime,
                                           persistedData.EntityData,
@@ -98,7 +157,7 @@ namespace NitroxServer.Serialization.World
             }
             catch (Exception ex)
             {
-                Log.Info("Could not load world: " + ex.ToString() + " creating a new one.");
+                Log.Info("Could not load worldd: " + ex.ToString() + " creating a new one.");
             }
 
             return Optional<World>.Empty();
@@ -152,7 +211,7 @@ namespace NitroxServer.Serialization.World
             HashSet<TechType> serverSpawnedSimulationWhiteList = NitroxServiceLocator.LocateService<HashSet<TechType>>();
             world.EntitySimulation = new EntitySimulation(world.EntityData, world.SimulationOwnershipData, world.PlayerManager, serverSpawnedSimulationWhiteList);
             world.GameMode = gameMode;
-            
+
             world.BatchEntitySpawner = new BatchEntitySpawner(NitroxServiceLocator.LocateService<EntitySpawnPointFactory>(),
                                                               NitroxServiceLocator.LocateService<UweWorldEntityFactory>(),
                                                               NitroxServiceLocator.LocateService<UwePrefabFactory>(),

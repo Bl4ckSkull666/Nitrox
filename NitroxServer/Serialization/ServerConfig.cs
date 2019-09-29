@@ -9,6 +9,8 @@ namespace NitroxServer.ConfigParser
     {
         private readonly ServerConfigItem<int>    portSetting = new ServerConfigItem<int>("Port", 11000);
         private readonly ServerConfigItem<int>    saveIntervalSetting   = new ServerConfigItem<int>("SaveInterval", 60000);
+        private readonly ServerConfigItem<int>    backupIntervalSetting = new ServerConfigItem<int>("BackUpInterval", 10);
+        private readonly ServerConfigItem<int>    holdBackupSetting = new ServerConfigItem<int>("HoldBackups", 20);
         private readonly ServerConfigItem<int>    maxConnectionsSetting = new ServerConfigItem<int>("MaxConnections", 100);
         private readonly ServerConfigItem<bool>   disableConsoleSetting = new ServerConfigItem<bool>("DisableConsole", true);
         private readonly ServerConfigItem<string> saveNameSetting       = new ServerConfigItem<string>("SaveName", "save");
@@ -19,6 +21,8 @@ namespace NitroxServer.ConfigParser
         
         public int ServerPort { get { return portSetting.Value; } }
         public int SaveInterval { get { return saveIntervalSetting.Value; } }
+        public int BackUpInterval { get { return backupIntervalSetting.Value; } }
+        public int HoldBackUps { get { return holdBackupSetting.Value; } }
         public int MaxConnections { get { return maxConnectionsSetting.Value; } }
         public bool DisableConsole { get { return disableConsoleSetting.Value; } }
         public string SaveName { get { return saveNameSetting.Value; } }
